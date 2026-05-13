@@ -28,12 +28,24 @@ It does **not** send the selected code content.
 
 ## How it works
 
-- `idea-selection.ts` is a Pi extension.
-- The extension listens on `127.0.0.1:17373` by default.
+- `idea-selection.ts` is a Pi extension that listens on a local HTTP port.
+- Each Pi instance writes its own info (`pid`, `port`, `cwd`) into `~/.pi/agent/idea-selection/instances/`.
 - `send-idea-selection.ps1` is called by JetBrains External Tools.
 - The script reads JetBrains macros such as `$FilePath$`, `$SelectionStartLine$`, and `$SelectionEndLine$`.
-- The script posts the generated file reference to the Pi extension.
+- The script discovers running Pi instances and routes by `$ProjectFileDir$` → Pi `cwd`.
 - The extension appends the reference to the Pi input editor.
+
+### Multiple Pi instances
+
+When multiple Pi instances are running, the extension uses **dynamic port assignment**:
+- It tries the preferred port (`17373` by default or `PI_IDEA_SELECTION_PORT`).
+- If the preferred port is busy, it automatically picks a free port.
+- Each Pi publishes its port and working directory to the instance registry.
+
+The PowerShell sender script matches `$ProjectFileDir$` against each Pi's `cwd`.
+
+If multiple Pis share the same project directory, use the `/idea-target`
+command in the Pi you want to receive selections.
 
 ## Install
 
@@ -177,17 +189,37 @@ src/main/java/example/UserService.java:120
 
 Multiple shortcut presses append multiple lines.
 
-## Custom port
+## Port configuration
 
-The default port is `17373`.
+The preferred port is `17373` by default. It is no longer required to be unique across all
+Pi instances — if the preferred port is busy, the extension falls back to a free port
+automatically.
 
-To use another port, set the same environment variable for both the Pi process and the JetBrains IDE process:
+To use a different preferred port, set the same environment variable for both Pi and JetBrains:
 
 ```powershell
 $env:PI_IDEA_SELECTION_PORT = "17374"
 ```
 
-If you set a persistent Windows environment variable, restart JetBrains IDE and Pi so both processes see the same value.
+If you set a persistent Windows environment variable, restart both processes so they see it.
+
+## Multiple Pi instances sharing the same project
+
+If you have multiple Pi instances running in the same project directory, the sender script
+cannot decide which one should receive the selection. Use the `/idea-target` command inside
+the target Pi to mark it as the active receiver:
+
+```text
+/idea-target
+```
+
+You should see:
+```text
+IDEA selection target set for D:/path/to/project on http://127.0.0.1:xxxxx/idea-selection
+```
+
+This preference is stored in `~/.pi/agent/idea-selection/active-targets.json`.
+To change the active target later, run `/idea-target` in a different Pi instance.
 
 ## Fallback behavior
 
